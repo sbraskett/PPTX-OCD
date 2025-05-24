@@ -1,0 +1,61 @@
+Private Sub WriteContentTypes()
+    Dim XDoc        As Object
+    Dim listNode    As Object
+    Dim Elemnt      As Object
+    Dim cExtension  As Collection
+    Dim sFileExt    As String
+    Dim bExist      As Boolean
+    Dim oShell      As Object
+    Dim oItem       As Object
+    Dim i           As Long
+
+    ' Shell application to move files in/out of the zip
+    Set oShell = CreateObject("Shell.Application")
+    oShell.Namespace(sTempDir & "\").MoveHere sZipPath & "\[Content_Types].xml", 4
+    Do While Len(Dir(sTempDir & "\[Content_Types].xml")) = 0: Loop
+
+    ' Collect existing extensions
+    Set cExtension = New Collection
+    Set XDoc = CreateObject("MSXML2.DOMDocument")   ' late-bound DOMDocument
+    XDoc.async = False
+    XDoc.validateOnParse = False
+    XDoc.Load sTempDir & "\[Content_Types].xml"
+
+    For Each listNode In XDoc.DocumentElement.ChildNodes
+        If listNode.nodeName = "Default" Then
+            For i = 0 To listNode.Attributes.Length - 1
+                If listNode.Attributes(i).nodeName = "Extension" Then
+                    cExtension.Add listNode.Attributes(i).Text
+                End If
+            Next i
+        End If
+    Next listNode
+
+    ' Loop your resource files, add any new extension entries
+    For Each oItem In oShell.Namespace(sTempDir & "\resource\").Items
+        sFileExt = Mid$(oItem.Name, InStrRev(oItem.Name, ".") + 1)
+        bExist = False
+        For i = 1 To cExtension.Count
+            If UCase(sFileExt) = UCase(cExtension(i)) Then
+                bExist = True
+                Exit For
+            End If
+        Next i
+
+        If Not bExist Then
+            cExtension.Add sFileExt
+            Set Elemnt = XDoc.createElement("Default")
+            Elemnt.setAttribute "ContentType", GetMimeType(sFileExt)
+            Elemnt.setAttribute "Extension", LCase(sFileExt)
+            XDoc.DocumentElement.appendChild Elemnt
+        End If
+    Next oItem
+
+    ' Save back, stripping any default xmlns
+    XDoc.LoadXML Replace(XDoc.XML, " xmlns=""" & """", "")
+    XDoc.Save sTempDir & "\[Content_Types].xml"
+    oShell.Namespace(sZipPath & "\").MoveHere sTempDir & "\[Content_Types].xml", 4
+    Do While Len(Dir(sTempDir & "\[Content_Types].xml")) <> 0: Loop
+
+    Set XDoc = Nothing
+End Sub
