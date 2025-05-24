@@ -1,0 +1,95 @@
+'————— WriteRelationship: Mirror and update .rels for any new resources —————
+Private Sub WriteRelationship()
+    Dim XDoc         As Object
+    Dim listNode     As Object
+    Dim Elemnt       As Object
+    Dim cListResFile As Collection
+    Dim cId          As Collection
+    Dim bExist       As Boolean
+    Dim oShell       As Object
+    Dim oItem        As Object
+    Dim i            As Long
+    Dim ID           As Long
+
+    Set oShell = CreateObject("Shell.Application")
+    Set cListResFile = New Collection
+    Set cId          = New Collection
+
+    ' 1) Pull out the _rels folder
+    oShell.Namespace(sTempDir & "\").MoveHere sZipPath & "\_rels", 4
+    Do While Len(Dir(sTempDir & "\_rels\.rels")) = 0: Loop
+
+    ' 2) Load relationships XML late-bound
+    Set XDoc = CreateObject("MSXML2.DOMDocument")
+    XDoc.async = False
+    XDoc.validateOnParse = False
+    XDoc.Load sTempDir & "\_rels\.rels"
+
+    ' 3) Gather existing Targets and Ids
+    For Each listNode In XDoc.DocumentElement.ChildNodes
+        For i = 0 To listNode.Attributes.Length - 1
+            Dim attr As Object: Set attr = listNode.Attributes(i)
+            Select Case attr.nodeName
+            Case "Target"
+                If InStr(attr.Text, "resource") = 1 Then
+                    If Len(Dir(sTempDir & "\" & attr.Text)) = 0 Then
+                        XDoc.DocumentElement.RemoveChild listNode
+                    Else
+                        cListResFile.Add attr.Text
+                    End If
+                End If
+            Case "Id"
+                cId.Add attr.Text
+            End Select
+        Next i
+    Next listNode
+
+    ' 4) Add new resource relationships
+    For Each oItem In oShell.Namespace(sTempDir & "\resource\").Items
+        bExist = False
+        For i = 1 To cListResFile.Count
+            If cListResFile(i) = "resource/" & oItem.Name Then
+                bExist = True: Exit For
+            End If
+        Next i
+
+        If Not bExist Then
+            ' find next free rId#
+            ID = 0
+            Do
+                ID = ID + 1
+                bExist = False
+                For i = 1 To cId.Count
+                    If cId(i) = "rId" & ID Then
+                        bExist = True: Exit For
+                    End If
+                Next i
+            Loop While bExist
+
+            cId.Add "rId" & ID
+            Set Elemnt = XDoc.createElement("Relationship")
+            Elemnt.setAttribute "Target", "resource/" & oItem.Name
+            Elemnt.setAttribute "Type", _
+              "http://schemas.openxmlformats.org/officeDocument/2006/relationships/resource"
+            Elemnt.setAttribute "Id", "rId" & ID
+            XDoc.DocumentElement.appendChild Elemnt
+        End If
+    Next oItem
+
+    ' 5) Save it back (strip default xmlns)
+    XDoc.LoadXML Replace(XDoc.XML, " xmlns=""" & """", "")
+    XDoc.Save sTempDir & "\_rels\.rels"
+    oShell.Namespace(sZipPath & "\").MoveHere sTempDir & "\_rels", 4
+    Do While Len(Dir(sTempDir & "\_rels\.rels")) <> 0: Loop
+
+    Set XDoc = Nothing
+End Sub
+
+'————— GetMimeType: Read content type from registry or default —————
+Private Function GetMimeType(sExtension As String) As String
+    Dim objShell As Object
+    On Error Resume Next
+    Set objShell = CreateObject("WScript.Shell")
+    GetMimeType = objShell.RegRead("HKCR\." & sExtension & "\Content Type")
+    If Len(GetMimeType) = 0 Then GetMimeType = "application/octet-stream"
+End Function
