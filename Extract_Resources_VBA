@@ -1,0 +1,91 @@
+Public Function ExtractResources() As Boolean
+    Dim FSO        As Object
+    Dim oShell     As Object
+    Dim oItem      As Object
+    Dim sName      As String
+    Dim t          As Single, nFile As Long
+    
+    Dim SourceFile As String
+    Dim sZipPath   As String
+    Dim tempRes    As String
+    Dim zipRes     As String
+    
+    ' 1) Workbook → temp folder name
+    SourceFile = ThisWorkbook.FullName
+    sName = Mid$(SourceFile, InStrRev(SourceFile, "\") + 1)
+    sName = Left$(sName, InStrRev(sName, ".") - 1)
+    sTempDir = Environ("Temp") & "\Res-" & sName
+    
+    Set FSO   = CreateObject("Scripting.FileSystemObject")
+    Set oShell = CreateObject("Shell.Application")
+    
+    ' 2) Clean up any existing temp, with a unique fallback
+    On Error Resume Next
+    If FSO.FolderExists(sTempDir) Then
+        FSO.DeleteFolder sTempDir, True
+        t = Timer
+        Do While Err.Number <> 0
+            Err.Clear
+            If Timer - t > 5 Then
+                nFile = nFile + 1
+                sTempDir = Environ("Temp") & "\Res-" & sName & nFile
+                t = Timer
+            End If
+            If FSO.FolderExists(sTempDir) Then FSO.DeleteFolder sTempDir, True
+        Loop
+    End If
+    Err.Clear
+    
+    ' 3) Create base temp and copy workbook→.zip
+    FSO.CreateFolder sTempDir
+    sZipPath = sTempDir & "\" & sName & ".zip"
+    FSO.CopyFile SourceFile, sZipPath, True
+    
+    ' 4) Prepare resource subfolder
+    tempRes = sTempDir & "\resource"
+    If Not FSO.FolderExists(tempRes) Then FSO.CreateFolder tempRes
+    
+    zipRes = sZipPath & "\resource"
+    
+    Debug.Print "sZipPath=" & sZipPath
+    Debug.Print "tempRes=" & tempRes
+    
+    ' 5) Find the "resource" folder inside the zip and copy its Items
+    For Each oItem In oShell.Namespace(sZipPath).Items
+        If LCase(oItem.Name) = "resource" Then
+            oShell.Namespace(tempRes).CopyHere _
+                oShell.Namespace(zipRes).Items, 4  ' 4 = no progress UI
+            Exit For
+        End If
+    Next oItem
+    
+    ' 6) Wait (with timeout) for the copy to finish
+    Dim srcNS As Object, dstNS As Object
+    Dim srcCount As Long, dstCount As Long
+    Dim startTime As Single
+    
+    Set srcNS = oShell.Namespace(zipRes)
+    Set dstNS = oShell.Namespace(tempRes)
+    startTime = Timer
+    
+    Do
+        On Error Resume Next
+        srcCount = srcNS.Items.Count
+        dstCount = dstNS.Items.Count
+        On Error GoTo 0
+        
+        If srcCount = dstCount Then Exit Do
+        DoEvents
+        
+        ' bail after 10 seconds
+        If Timer - startTime > 10 Then
+            Debug.Print "ExtractResources: copy timeout; src=" & srcCount & " dst=" & dstCount
+            Exit Do
+        End If
+    Loop
+    
+    ' 7) Clean up the zip
+    Kill sZipPath
+    
+    ExtractResources = True
+End Function
