@@ -1,0 +1,63 @@
+from openpyxl import load_workbook
+
+# Path to your Excel file
+excel_path = 'your_excel_file.xlsx'
+
+# Define the trigger phrase
+trigger_phrase = "Server names that the file or folder that needs encrypting is hosted on:"
+
+# Store extracted server names
+server_names = []
+
+# Load workbook and iterate through each sheet and cell
+wb = load_workbook(excel_path, data_only=True)
+for sheet in wb.worksheets:
+    for row in sheet.iter_rows(values_only=True):
+        for i, cell in enumerate(row):
+            if isinstance(cell, str) and trigger_phrase in cell:
+                # Assume server names are after the colon in same or next cell
+                remaining_text = cell.split(trigger_phrase)[-1].strip()
+                if remaining_text:
+                    server_names.append(remaining_text)
+                elif i + 1 < len(row) and isinstance(row[i + 1], str):
+                    server_names.append(row[i + 1].strip())
+
+# Output result
+print("Extracted server names:")
+for name in server_names:
+    print("-", name)
+
+
+$excelFile = "C:\Path\To\YourFile.xlsx"
+$excel = New-Object -ComObject Excel.Application
+$workbook = $excel.Workbooks.Open($excelFile)
+
+$trigger = "Server names that the file or folder that needs encrypting is hosted on:"
+$serverNames = @()
+
+foreach ($sheet in $workbook.Sheets) {
+    $usedRange = $sheet.UsedRange
+    $rows = $usedRange.Rows.Count
+    $cols = $usedRange.Columns.Count
+
+    for ($r = 1; $r -le $rows; $r++) {
+        for ($c = 1; $c -le $cols; $c++) {
+            $cell = $sheet.Cells.Item($r, $c).Text
+            if ($cell -like "*$trigger*") {
+                $after = $cell -replace ".*$trigger", ""
+                if ($after.Trim()) {
+                    $serverNames += $after.Trim()
+                } elseif ($c -lt $cols) {
+                    $serverNames += $sheet.Cells.Item($r, $c + 1).Text.Trim()
+                }
+            }
+        }
+    }
+}
+
+$workbook.Close($false)
+$excel.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel)
+
+Write-Output "Extracted server names:"
+$serverNames | ForEach-Object { Write-Output "- $_" }
