@@ -1,0 +1,27 @@
+from collections import defaultdict
+
+# Build per-ID summary
+summary = defaultdict(lambda: {'Total': 0, 'Matched': 0, 'Unmatched': 0})
+
+for col_b_val, hostname, status in output_rows:
+    key = col_b_val or "(blank)"
+    summary[key]['Total'] += 1
+    if status == "Matched":
+        summary[key]['Matched'] += 1
+    else:
+        summary[key]['Unmatched'] += 1
+
+# Write summary to CSV
+summary_file = output_csv.replace('.csv', '_summary.csv')
+with open(summary_file, 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(['Column B Value', 'Total Hosts', 'Matched', 'Unmatched'])
+    for col_b_val, counts in summary.items():
+        writer.writerow([
+            col_b_val,
+            counts['Total'],
+            counts['Matched'],
+            counts['Unmatched']
+        ])
+
+print(f"📊 Summary written to {summary_file}")
