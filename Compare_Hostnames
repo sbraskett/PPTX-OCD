@@ -46,6 +46,28 @@ $wbB.Close($false)
 $wbA = $excel.Workbooks.Open($fileA)
 $results = @()
 
+# --- Build summary per ColumnB ---
+$summary = $results |
+    Group-Object -Property ColumnB |
+    ForEach-Object {
+        $group = $_.Group
+        $total = $group.Count
+        $matched = ($group | Where-Object { $_.Status -eq "Matched" }).Count
+        $unmatched = $total - $matched
+
+        [PSCustomObject]@{
+            ColumnB     = $_.Name
+            TotalHosts  = $total
+            Matched     = $matched
+            Unmatched   = $unmatched
+        }
+    }
+
+# --- Export summary to CSV ---
+$summaryPath = $outputCsv -replace '\.csv$', '_summary.csv'
+$summary | Export-Csv -Path $summaryPath -NoTypeInformation -Encoding UTF8
+
+Write-Output "📊 Summary saved to $summaryPath"
 foreach ($sheet in $wbA.Sheets) {
     $lastRow = $sheet.UsedRange.Rows.Count
     for ($r = 1; $r -le $lastRow; $r++) {
